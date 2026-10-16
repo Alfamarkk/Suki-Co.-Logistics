@@ -1,0 +1,236 @@
+<!-- ================= Developer ================= -->
+<section class="page" id="admin-dashboard" hidden>
+  <h1 class="title" id="aHello"></h1>
+  <p class="sub">Here's what's happening today.</p>
+  <div class="stats" id="aStats"></div>
+  <div class="cols">
+    <div class="panel"><h2>Admin tasks &amp; alerts</h2><div id="aTasks"></div></div>
+    <div class="panel"><h2>Pending applications</h2><div id="aApps" class="stack"></div></div>
+  </div>
+</section>
+
+<section class="page" id="admin-users" hidden><div id="pg-suki"></div></section>
+<section class="page" id="admin-groceries" hidden><div id="pg-grocery"></div></section>
+<section class="page" id="admin-toda" hidden><div id="pg-toda"></div></section>
+
+<section class="page" id="admin-reports" hidden>
+  <h1 class="title">Reports</h1>
+  <p class="sub">Problems sent by suki, partners and riders, grouped by type.</p>
+  <div class="stats" id="arStats"></div>
+  <div class="tabs" id="arChips" role="group" aria-label="Filter by category"></div>
+  <div id="arTable" style="margin-top:12px"></div>
+</section>
+
+<script>
+const TYPE_LABEL = { suki: 'Suki', grocery: 'Grocery partner', toda: 'TODA rider' };
+
+/* ---- applications (used on the dashboard and the Pending tabs) ----- */
+function appLines(a) {
+  const l = ['<b>' + esc(a.name) + '</b> <span class="badge">' + TYPE_LABEL[a.type] + '</span>'];
+  if (a.type === 'grocery') l.push(esc(a.business));
+  if (a.type === 'toda') l.push(esc(a.todaName) + ', ' + esc(a.plateNo));
+  l.push(esc(a.phone));
+  l.push(esc(a.area) + (a.address ? ', ' + esc(a.address) : ''));
+  if (a.type === 'grocery') l.push('GCash: ' + esc(a.gcashNo) + ' (' + esc(a.gcashName) + ')');
+  if (a.type === 'toda') l.push('Route: ' + esc(a.route));
+  l.push('<span class="note">Username: ' + esc(a.username) + ', sent ' + esc(a.date) + '</span>');
+  return l.join('<br>');
+}
+
+function appCard(a, withActions) {
+  const photo = a.photoId ? thumb(a.photoId, 'Application photo of ' + a.name) : IMG_PH;
+  const decide = withActions
+    ? '<div class="decide"><button class="btn navy sm" onclick="aReview(\'' + esc(a.id) + '\',\'Approved\')">Approve</button>' +
+      '<button class="btn red sm" onclick="aReview(\'' + esc(a.id) + '\',\'Declined\')">Decline</button></div>' : '';
+  return '<div class="card appcard"><div class="thumb">' + photo + '</div><div class="grow">' + appLines(a) + '</div>' + decide + '</div>';
+}
+
+async function aReview(id, decision) {
+  try {
+    const r = await api('reviewApplication', id, decision);
+    toast(r.ok ? (decision === 'Approved' ? 'Approved. They can sign in now.' : 'Application declined.') : r.msg, !r.ok);
+  } catch (e) { toast('Could not save that. Try again.', true); }
+  run(current, false);
+}
+
+/* ---- dashboard ---------------------------------------------------- */
+LOADERS['admin-dashboard'] = async function () {
+  const s = await api('getAdminStats');
+  $('aHello').textContent = greet() + ', ' + me.name + '!';
+  $('aStats').innerHTML = statCards([['Registered users', s.suki], ['Grocery partners', s.groceries], ['TODA partners', s.toda], ['Total orders', s.orders]]);
+  const task = (label, sub, n, fn) =>
+    '<div class="card task"><div class="row between"><div><div>' + label + '</div><div class="note">' + sub + '</div></div><b class="num">' + n + '</b></div>' +
+    '<button class="btn steel sm" onclick="' + fn + '">View details</button></div>';
+  $('aTasks').innerHTML =
+    task('Pending applications', 'Suki', s.pending.suki, "pGo('suki','pending')") +
+    task('Pending applications', 'Grocery partners', s.pending.grocery, "pGo('grocery','pending')") +
+    task('Pending applications', 'TODA partners', s.pending.toda, "pGo('toda','pending')") +
+    task('Open reports', 'From all roles', s.openReports, "show('admin-reports')");
+  $('aApps').innerHTML = s.apps.length ? s.apps.map(a => appCard(a, true)).join('') : empty('No applications are waiting for review.');
+};
+
+/* ---- user, grocery and TODA pages (one shared renderer) ------------- */
+const PK = {
+  suki: {
+    page: 'admin-users', title: 'User Management', sub: 'Registered suki, their details, and order history.', tab: 'Users',
+    cols: [['User ID', r => esc(r.id)], ['Name', r => '<b>' + esc(r.name) + '</b>'], ['Phone', r => esc(r.phone)], ['Area', r => esc(r.area)],
+           ['Registered', r => esc(r.registered)], ['Orders', r => r.orders], ['Status', r => badge(r.status)]]
+  },
+  grocery: {
+    page: 'admin-groceries', title: 'Grocery Partners', sub: 'Stores, their products, and the orders they handled.', tab: 'Partners',
+    cols: [['Store ID', r => esc(r.id)], ['Store', r => '<b>' + esc(r.name) + '</b>'], ['Owner', r => esc(r.owner)], ['Area', r => esc(r.area)],
+           ['Products', r => r.products], ['Orders', r => r.orders], ['Status', r => badge(r.status)]]
+  },
+  toda: {
+    page: 'admin-toda', title: 'TODA Partners', sub: 'Riders, their routes, and their delivery history.', tab: 'Riders',
+    cols: [['Rider ID', r => esc(r.id)], ['Name', r => '<b>' + esc(r.name) + '</b>'], ['TODA', r => esc(r.toda) + ', ' + esc(r.plate)],
+           ['Route', r => esc(r.route)], ['Deliveries', r => r.deliveries], ['Status', r => badge(r.status)]]
+  }
+};
+const pState = { suki: { tab: 'active', data: null }, grocery: { tab: 'active', data: null }, toda: { tab: 'active', data: null } };
+LOADERS['admin-users'] = () => pLoad('suki');
+LOADERS['admin-groceries'] = () => pLoad('grocery');
+LOADERS['admin-toda'] = () => pLoad('toda');
+
+function pGo(kind, tab) { pState[kind].tab = tab; show(PK[kind].page); }
+
+function pShell(kind) {
+  const el = $('pg-' + kind);
+  if (el.dataset.ready) return;
+  el.dataset.ready = '1';
+  const c = PK[kind];
+  el.innerHTML = '<h1 class="title">' + c.title + '</h1><p class="sub">' + c.sub + '</p><div class="stats" id="ps-' + kind + '"></div>' +
+    '<div class="row wrap" style="margin-bottom:12px"><div class="tabs" id="pt-' + kind + '"></div>' +
+    '<input id="pq-' + kind + '" class="search" type="search" placeholder="Search by name or ID" aria-label="Search ' + c.title + '" oninput="pRender(\'' + kind + '\')"></div>' +
+    '<div id="pb-' + kind + '"></div>';
+}
+
+async function pLoad(kind) {
+  pShell(kind);
+  pState[kind].data = await api('getPartners', kind);
+  pRender(kind);
+}
+
+function pTab(kind, tab) { pState[kind].tab = tab; pRender(kind); }
+
+function pRender(kind) {
+  const st = pState[kind], d = st.data, c = PK[kind];
+  if (!d) return;
+  const q = $('pq-' + kind).value.trim().toLowerCase();
+  const keep = r => !q || Object.keys(r).map(k => r[k]).join(' ').toLowerCase().indexOf(q) > -1;
+  $('ps-' + kind).innerHTML = statCards(d.stats);
+  const tabs = [['active', c.tab, d.active.length], ['pending', 'Pending', d.pending.length], ['declined', 'Declined', d.declined.length]];
+  $('pt-' + kind).innerHTML = tabs.map(t =>
+    '<button class="tab ' + (st.tab === t[0] ? 'on' : '') + '" aria-pressed="' + (st.tab === t[0]) + '" onclick="pTab(\'' + kind + '\',\'' + t[0] + '\')">' + t[1] + ' (' + t[2] + ')</button>').join('');
+  let body;
+  if (st.tab === 'active') {
+    body = tbl(c.cols.concat([['', r => '<button class="btn sm" onclick="pView(\'' + kind + '\',\'' + esc(r.id) + '\')">View</button>']]),
+      d.active.filter(keep), q ? 'Nothing matches your search.' : 'No ' + c.tab.toLowerCase() + ' yet.');
+  } else {
+    const list = d[st.tab].filter(keep);
+    body = list.length ? '<div class="stack">' + list.map(a => appCard(a, st.tab === 'pending')).join('') + '</div>'
+      : empty(q ? 'Nothing matches your search.' : 'No ' + st.tab + ' applications.');
+  }
+  $('pb-' + kind).innerHTML = body;
+}
+
+function histCols(kind) {
+  const link = (id, text) => id ? ' <a href="' + viewUrl(id) + '" target="_blank" rel="noopener">' + text + '</a>' : '';
+  const col = {
+    order: ['Order', o => '#' + esc(o.id)],
+    customer: ['Customer', o => esc(o.customer)],
+    store: ['Store', o => esc(o.store)],
+    items: ['Items', o => esc(o.items)],
+    total: ['Total', o => peso(o.total)],
+    pay: ['Payment', o => esc(o.payment) + link(o.receiptId, 'receipt')],
+    status: ['Status', o => badge(o.status)],
+    proof: ['Delivery photo', o => o.proofId ? '<a href="' + viewUrl(o.proofId) + '" target="_blank" rel="noopener">View photo</a>' : 'None'],
+    date: ['Date', o => esc(o.time)]
+  };
+  const sets = {
+    suki: ['order', 'store', 'items', 'total', 'pay', 'status', 'proof', 'date'],
+    grocery: ['order', 'customer', 'items', 'total', 'pay', 'status', 'proof', 'date'],
+    toda: ['order', 'customer', 'store', 'total', 'status', 'proof', 'date']
+  };
+  return sets[kind].map(k => col[k]);
+}
+
+async function pView(kind, id) {
+  let d;
+  try { d = await api('getDetail', kind, id); } catch (e) { return toast('Could not load the details. Try again.', true); }
+  if (!d) return toast('Details not found.', true);
+  const suspended = d.status === 'Suspended';
+  const photo = d.photoId ? '<p>' + thumb(d.photoId, 'Photo of ' + d.title) + '</p>' : '';
+  const products = d.products
+    ? '<h3>Products (' + d.products.length + ')</h3>' + tbl([['Product', p => esc(p.name)], ['Price', p => peso(p.price)], ['Stock', p => p.stock]], d.products, 'No products listed.') : '';
+  openDrawer(d.title,
+    photo + '<p>' + badge(d.status) + '</p>' +
+    '<dl class="kv">' + d.profile.map(p => '<dt>' + esc(p[0]) + '</dt><dd>' + esc(p[1] || 'Not provided') + '</dd>').join('') + '</dl>' +
+    products + '<h3>' + esc(d.historyTitle) + ' (' + d.orders.length + ')</h3>' + tbl(histCols(kind), d.orders, 'No orders yet.') +
+    '<div class="actions">' + (suspended
+      ? '<button class="btn navy" onclick="pToggle(\'' + kind + '\',\'' + esc(id) + '\',\'Active\')">Reactivate</button>'
+      : '<button class="btn red" onclick="pToggle(\'' + kind + '\',\'' + esc(id) + '\',\'Suspended\')">Suspend</button>') + '</div>');
+}
+
+async function pToggle(kind, id, status) {
+  if (status === 'Suspended' && !confirm('Suspend this account? They will not be able to sign in.')) return;
+  try {
+    const r = await api('setPartnerStatus', kind, id, status);
+    toast(r.ok ? (status === 'Active' ? 'Account reactivated.' : 'Account suspended.') : r.msg, !r.ok);
+  } catch (e) { toast('Could not save that. Try again.', true); }
+  closeDrawer();
+  pLoad(kind);
+}
+
+/* ---- reports -------------------------------------------------------- */
+let aRep = [], aRepCat = 'All';
+LOADERS['admin-reports'] = async function () {
+  aRep = await api('getReports');
+  aRepRender();
+};
+
+function aRepRender() {
+  const n = s => aRep.filter(r => r.status === s).length;
+  $('arStats').innerHTML = statCards([['Total reports', aRep.length], ['New', n('New')], ['In review', n('In Review')], ['Resolved', n('Resolved')]]);
+  const cats = ['All'].concat(CONFIG.categories);
+  $('arChips').innerHTML = cats.map(c => {
+    const count = c === 'All' ? aRep.length : aRep.filter(r => r.category === c).length;
+    return '<button class="tab ' + (aRepCat === c ? 'on' : '') + '" aria-pressed="' + (aRepCat === c) + '" onclick="aRepCatSet(\'' + esc(c) + '\')">' + esc(c) + ' (' + count + ')</button>';
+  }).join('');
+  const rows = aRep.filter(r => aRepCat === 'All' || r.category === aRepCat);
+  $('arTable').innerHTML = tbl([
+    ['Report', r => esc(r.id)],
+    ['Category', r => esc(r.category)],
+    ['Reported by', r => esc(r.by) + ' <span class="note">(' + esc(ROLE_NAME[r.role] || r.role) + ')</span>'],
+    ['Description', r => esc(r.description.length > 70 ? r.description.slice(0, 70) + '...' : r.description)],
+    ['Order', r => r.orderId ? '#' + esc(r.orderId) : 'None'],
+    ['Date', r => esc(r.date)],
+    ['Status', r => badge(r.status)],
+    ['', r => '<button class="btn sm" onclick="aRepView(\'' + esc(r.id) + '\')">Open</button>']
+  ], rows, 'No reports in this category.');
+}
+
+function aRepCatSet(c) { aRepCat = c; aRepRender(); }
+
+function aRepView(id) {
+  const r = aRep.find(x => x.id === id);
+  if (!r) return;
+  openDrawer('Report ' + r.id,
+    '<dl class="kv"><dt>Category</dt><dd>' + esc(r.category) + '</dd><dt>Reported by</dt><dd>' + esc(r.by) + ' (' + esc(ROLE_NAME[r.role] || r.role) + ')</dd>' +
+    '<dt>Order</dt><dd>' + (r.orderId ? '#' + esc(r.orderId) : 'None') + '</dd><dt>Date</dt><dd>' + esc(r.date) + '</dd></dl>' +
+    '<h3>What happened</h3><div class="card" style="white-space:pre-wrap;border:1px solid var(--slate)">' + esc(r.description) + '</div>' +
+    '<label for="drStatus">Status</label><select id="drStatus">' +
+    ['New', 'In Review', 'Resolved'].map(s => '<option' + (s === r.status ? ' selected' : '') + '>' + s + '</option>').join('') + '</select>' +
+    '<label for="drNotes">Developer notes</label><textarea id="drNotes">' + esc(r.notes) + '</textarea>' +
+    '<p><button class="btn navy" onclick="aRepSave(\'' + esc(r.id) + '\')">Save changes</button></p>');
+}
+
+async function aRepSave(id) {
+  try {
+    const r = await api('updateReport', id, $('drStatus').value, $('drNotes').value);
+    toast(r.ok ? 'Report saved.' : r.msg, !r.ok);
+  } catch (e) { toast('Could not save the report. Try again.', true); return; }
+  closeDrawer();
+  run('admin-reports', false);
+}
+</script>

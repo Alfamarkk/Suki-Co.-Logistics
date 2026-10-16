@@ -1,0 +1,345 @@
+<!-- ================= Kapartner (grocery partner) ================= -->
+<section class="page" id="grocery-dashboard" hidden>
+  <h1 class="title kp-hello" id="kpHello">Good day, Kapartner!</h1>
+  <p class="sub">Here's what's happening today.</p>
+
+  <div class="kp-stats">
+    <button class="kp-stat" onclick="show('grocery-orders')">
+      <svg viewBox="0 0 48 48" aria-hidden="true" fill="currentColor"><path d="M3 7h6l6 24h24l5-17H12" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/><path d="M14 14h30l-5 17H16z"/><circle cx="18" cy="40" r="4"/><circle cx="36" cy="40" r="4"/></svg>
+      <span><em>Total Orders</em><b id="kpTotal">0</b></span>
+    </button>
+    <button class="kp-stat" onclick="show('grocery-delivery')">
+      <svg viewBox="0 0 48 48" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round"><path d="M6 12h22v20H6z"/><path d="M28 18h8l6 8v6H28z"/><path d="M2 32h44"/><circle cx="12" cy="37" r="4.5" fill="currentColor"/><circle cx="36" cy="37" r="4.5" fill="currentColor"/><path d="M10 18h14M10 24h10"/></svg>
+      <span><em>In Transit</em><b id="kpTransit">0</b></span>
+    </button>
+    <button class="kp-stat" onclick="show('grocery-delivery')">
+      <svg viewBox="0 0 48 48" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><circle cx="22" cy="26" r="17"/><path d="M13 25l8 8 22-26"/></svg>
+      <span><em>Delivered</em><b id="kpDelivered">0</b></span>
+    </button>
+    <button class="kp-stat" onclick="show('grocery-payments')">
+      <svg viewBox="0 0 48 48" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"><path d="M6 6h22M6 44h22M10 6c0 12 12 12 12 19S10 32 10 44M24 6c0 12-12 12-12 19s12 7 12 19"/><path d="M12 40c2-4 8-4 10 0z" fill="currentColor"/><circle cx="36" cy="14" r="9" fill="#fff"/><path d="M36 9v5l3 2"/></svg>
+      <span><em>Pending</em><b id="kpPending">0</b></span>
+    </button>
+  </div>
+
+  <div class="kp-panel">
+    <div class="row between wrap">
+      <h2>Weekly Sales Overview</h2>
+      <span class="kp-pill">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M7 2h2v2h6V2h2v2h3a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3zm-2 7v10h14V9zm2 2h2v2H7zm4 0h2v2h-2zm4 0h2v2h-2zm-8 4h2v2H7zm4 0h2v2h-2z"/></svg>
+        <span id="kpToday"></span>
+      </span>
+    </div>
+    <p class="note" id="kpWeekNote" style="margin:2px 0 6px"></p>
+    <div class="kp-chart" id="kpChart"></div>
+    <details class="kp-table"><summary>Show as table</summary><div id="kpWeekTable"></div></details>
+  </div>
+
+  <div class="kp-panel">
+    <div class="row between wrap">
+      <h2>Recent Orders</h2>
+      <button class="kp-pill link-pill" onclick="show('grocery-orders')">View all
+        <svg viewBox="0 0 32 12" width="34" height="12" aria-hidden="true"><path d="M0 6h28" stroke="currentColor" stroke-width="2.5"/><path d="M24 1l7 5-7 5z" fill="currentColor"/></svg>
+      </button>
+    </div>
+    <div id="kpRecent" class="kp-recent"></div>
+  </div>
+</section>
+
+<section class="page" id="grocery-orders" hidden>
+  <h1 class="title">Orders</h1>
+  <p class="sub">New orders appear here by themselves. Check each GCash receipt, then the TODA rider can pick up.</p>
+  <div class="tabs" id="gOrderTabs" style="margin-bottom:14px"></div>
+  <div id="gOrders"></div>
+</section>
+
+<section class="page" id="grocery-products" hidden>
+  <h1 class="title">Products</h1>
+  <p class="sub">Suki can only order what is listed here. Set stock to 0 when you run out.</p>
+  <div class="panel" style="max-width:560px;margin-bottom:18px">
+    <h2>Add a product</h2>
+    <label for="gpName">Product name</label><input id="gpName">
+    <div class="cols" style="margin:0">
+      <div><label for="gpPrice">Price (&#8369;)</label><input id="gpPrice" type="number" min="1" step="0.01" inputmode="decimal"></div>
+      <div><label for="gpStock">Stock</label><input id="gpStock" type="number" min="0" step="1" inputmode="numeric"></div>
+    </div>
+    <p><button class="btn navy" id="gpAdd" onclick="gAdd()">Add product</button></p>
+  </div>
+  <h3>Your products</h3>
+  <div id="gProdTable"></div>
+</section>
+
+<section class="page" id="grocery-delivery" hidden>
+  <h1 class="title">Delivery</h1>
+  <p class="sub">Orders on their way to your suki, and who is bringing them.</p>
+  <div class="stats" id="gDelStats"></div>
+  <div id="gDelList"></div>
+</section>
+
+<section class="page" id="grocery-payments" hidden>
+  <h1 class="title">Payments</h1>
+  <p class="sub">Check each GCash receipt against the amount. The rider can only pick up after you confirm.</p>
+  <div class="cols">
+    <div class="panel"><h2>Your GCash details</h2><div id="gPayInfo"></div>
+      <p class="note">Suki send payment to this number at checkout. Contact the developer team to change it.</p></div>
+    <div class="stats" id="gPayStats" style="grid-template-columns:1fr 1fr;margin:0"></div>
+  </div>
+  <h3>Receipts to check</h3>
+  <div id="gPayQueue"></div>
+  <h3>Payment history</h3>
+  <div id="gPayHist"></div>
+</section>
+
+<script>
+const G_TRANSIT = ['Accepted', 'Picked Up', 'On the Way'];
+const G_STEPS = ['Placed', 'Accepted', 'Picked Up', 'On the Way', 'Delivered'];
+let gRows = [], gQuery = '', gTab = 'all';
+
+/* ---- shared helpers ------------------------------------------------- */
+async function gFetchOrders() {
+  gRows = await api('getGroceryOrders');
+  gBell(gRows.filter(o => o.payment === 'To verify' && o.status !== 'Cancelled').length);
+  return gRows;
+}
+function gBell(n) {
+  $('bellDot').hidden = !n;
+  $('topBell').title = n ? n + ' receipt' + (n > 1 ? 's' : '') + ' to check' : 'No new receipts';
+}
+function gMatch(o) {
+  if (!gQuery) return true;
+  return [o.id, o.customer, o.area, o.address, o.items, o.status, o.rider].join(' ').toLowerCase().indexOf(gQuery) > -1;
+}
+// Typing in the top search bar jumps to Orders and filters them.
+function gSearch(v) {
+  gQuery = v.trim().toLowerCase();
+  if (current !== 'grocery-orders') show('grocery-orders'); else gRenderOrders();
+}
+function gTrack(status) {
+  if (status === 'Cancelled') return '';
+  const i = G_STEPS.indexOf(status);
+  return '<div class="track">' + G_STEPS.map((x, k) => '<span class="' + (k <= i ? 'on' : '') + '">' + x + '</span>').join('') + '</div>';
+}
+
+/* ---- dashboard ------------------------------------------------------ */
+LOADERS['grocery-dashboard'] = async function () {
+  const d = await api('getPartnerDashboard');
+  $('kpHello').textContent = greet() + ', Kapartner!';
+  $('kpTotal').textContent = d.stats.total;
+  $('kpTransit').textContent = String(d.stats.transit).padStart(2, '0');
+  $('kpDelivered').textContent = d.stats.delivered;
+  $('kpPending').textContent = String(d.stats.pending).padStart(2, '0');
+  $('kpToday').textContent = d.today;
+  $('sideStore').textContent = d.store;
+  if (d.owner) $('whoName').textContent = d.owner;
+  gBell(d.toVerify);
+
+  const sum = d.week.reduce((n, w) => n + w.total, 0);
+  $('kpWeekNote').textContent = 'This week: ' + peso(sum) + ' from verified GCash payments.';
+  kpChart(d.week);
+  $('kpWeekTable').innerHTML = tbl([['Day', w => esc(w.day) + ' <span class="note">' + esc(w.date) + '</span>'],
+    ['Orders', w => w.future ? '' : w.orders], ['Sales', w => w.future ? '<span class="note">Not yet</span>' : peso(w.total)]], d.week);
+
+  $('kpRecent').innerHTML = d.recent.length ? d.recent.map(o =>
+    '<div class="kp-line"><span>#' + esc(o.id) + ' &middot; ' + esc(o.customer || 'Suki') + ' | ' + peso(o.total) +
+    ' <span class="note">' + esc(o.time) + '</span></span><span class="kp-status">' + esc(o.status === 'On the Way' || o.status === 'Picked Up' || o.status === 'Accepted' ? 'In transit' : o.status) + '</span></div>').join('')
+    : empty('No orders yet. They will show here as soon as a suki orders.');
+};
+
+// Line chart drawn as SVG: one series, smooth line, hover shows the exact day and amount.
+function kpChart(week) {
+  const W = 760, H = 260, L = 64, R = 20, T = 16, B = 34;
+  const pts = week.filter(w => !w.future);
+  const max0 = Math.max.apply(null, week.map(w => w.total).concat([0]));
+  const step = niceStep(max0 / 5 || 200);
+  const max = step * 5;
+  const x = i => L + i * (W - L - R) / (week.length - 1);
+  const y = v => T + (H - T - B) * (1 - v / max);
+  const kfmt = v => v >= 1000 ? (v / 1000).toFixed(v % 1000 ? 1 : 0) + 'K' : String(v);
+
+  let g = '';
+  for (let k = 0; k <= 5; k++) {
+    const v = step * k, yy = y(v);
+    g += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + yy + '" y2="' + yy + '" class="grid"/>' +
+         '<text x="' + (L - 10) + '" y="' + (yy + 4) + '" text-anchor="end" class="axis">' + (k ? '₱' + kfmt(v) : '0') + '</text>';
+  }
+  week.forEach((w, i) => { g += '<text x="' + x(i) + '" y="' + (H - 10) + '" text-anchor="middle" class="axis' + (w.future ? ' future' : '') + '">' + w.day + '</text>'; });
+
+  // smooth curve through the points (Catmull-Rom converted to Bezier)
+  const P = pts.map((w, i) => [x(i), y(w.total)]);
+  let path = '';
+  if (P.length) {
+    path = 'M' + P[0][0] + ',' + P[0][1];
+    for (let i = 0; i < P.length - 1; i++) {
+      const p0 = P[i - 1] || P[i], p1 = P[i], p2 = P[i + 1], p3 = P[i + 2] || p2;
+      const c1 = [p1[0] + (p2[0] - p0[0]) / 6, Math.min(y(0), p1[1] + (p2[1] - p0[1]) / 6)];
+      const c2 = [p2[0] - (p3[0] - p1[0]) / 6, Math.min(y(0), p2[1] - (p3[1] - p1[1]) / 6)];
+      path += ' C' + c1 + ' ' + c2 + ' ' + p2;
+    }
+  }
+  const dots = P.map(p => '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="4.5" class="dot"/>').join('');
+  const hits = week.map((w, i) => '<rect x="' + (x(i) - (W - L - R) / 12) + '" y="' + T + '" width="' + ((W - L - R) / 6) + '" height="' + (H - T - B) +
+    '" class="hit" data-i="' + i + '"/>').join('');
+
+  $('kpChart').innerHTML =
+    '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Sales per day this week">' + g +
+    '<line class="cross" id="kpCross" y1="' + T + '" y2="' + (H - B) + '" x1="-10" x2="-10"/>' +
+    '<path d="' + path + '" class="line"/>' + dots + hits + '</svg><div class="kp-tip" id="kpTip" hidden></div>';
+
+  const svg = $('kpChart').querySelector('svg');
+  svg.querySelectorAll('.hit').forEach(r => {
+    const i = Number(r.dataset.i), w = week[i];
+    const on = () => {
+      $('kpCross').setAttribute('x1', x(i)); $('kpCross').setAttribute('x2', x(i));
+      const tip = $('kpTip');
+      tip.innerHTML = '<b>' + esc(w.day) + ', ' + esc(w.date) + '</b><br>' +
+        (w.future ? 'Not yet' : peso(w.total) + ' &middot; ' + w.orders + ' order' + (w.orders === 1 ? '' : 's'));
+      tip.hidden = false;
+      const box = svg.getBoundingClientRect(), k = box.width / W;
+      const px = x(i) * k, py = (w.future ? y(0) : y(w.total)) * k;
+      tip.style.left = Math.min(Math.max(px, 70), box.width - 70) + 'px';
+      tip.style.top = Math.max(py - 12, 0) + 'px';
+    };
+    const off = () => { $('kpTip').hidden = true; $('kpCross').setAttribute('x1', -10); $('kpCross').setAttribute('x2', -10); };
+    r.addEventListener('mouseenter', on); r.addEventListener('mouseleave', off);
+    r.addEventListener('touchstart', on, { passive: true });
+  });
+}
+function niceStep(v) {
+  const p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
+}
+
+/* ---- orders --------------------------------------------------------- */
+LOADERS['grocery-orders'] = async function () {
+  await gFetchOrders();
+  gRenderOrders();
+};
+
+function gRenderOrders() {
+  const tabs = [['all', 'All'], ['new', 'New'], ['transit', 'In transit'], ['delivered', 'Delivered'], ['cancelled', 'Cancelled']];
+  const test = {
+    all: () => true, new: o => o.status === 'Placed', transit: o => G_TRANSIT.indexOf(o.status) > -1,
+    delivered: o => o.status === 'Delivered', cancelled: o => o.status === 'Cancelled'
+  };
+  $('gOrderTabs').innerHTML = tabs.map(t => '<button class="tab ' + (gTab === t[0] ? 'on' : '') + '" aria-pressed="' + (gTab === t[0]) +
+    '" onclick="gTab=\'' + t[0] + '\';gRenderOrders()">' + t[1] + ' (' + gRows.filter(test[t[0]]).length + ')</button>').join('');
+  const rows = gRows.filter(test[gTab]).filter(gMatch);
+  $('gOrders').innerHTML = (gQuery ? '<p class="note">Showing results for "' + esc(gQuery) + '". Clear the search bar to see everything.</p>' : '') +
+    (rows.length ? rows.map(gCard).join('') : empty(gQuery ? 'No orders match your search.' : 'No orders here yet. New orders appear automatically.'));
+}
+
+function gCard(o) {
+  const receipt = o.receiptId
+    ? '<div class="row" style="margin:8px 0;align-items:flex-start"><div>' + thumb(o.receiptId, 'GCash receipt for order ' + o.id) + '</div>' +
+      '<div class="note">GCash reference: ' + esc(o.payRef || 'not given') + '<br>Expected amount: <b>' + peso(o.total) + '</b></div></div>' : '';
+  const actions = [];
+  if (o.payment === 'To verify' && o.status !== 'Cancelled') {
+    actions.push('<button class="btn navy sm" onclick="gPay(\'' + esc(o.id) + '\',\'Verified\')">Payment received</button>');
+    actions.push('<button class="btn red sm" onclick="gPay(\'' + esc(o.id) + '\',\'Rejected\')">Reject receipt</button>');
+  }
+  let note = '';
+  if (o.status === 'Placed') note = 'Waiting for a TODA rider to accept.';
+  if (o.rider && o.status !== 'Delivered' && o.status !== 'Cancelled') note = 'Rider: ' + o.rider + ', ' + o.riderPhone;
+  if (o.status === 'Accepted' && o.payment === 'To verify') note += ' The rider cannot pick up until you confirm the payment.';
+  const proof = o.proofId ? '<p class="note" style="margin-bottom:4px">Delivery photo</p>' + thumb(o.proofId, 'Photo of order ' + o.id + ' at delivery') : '';
+  return '<div class="card ocard"><div class="meta"><b>Order #' + esc(o.id) + '</b>' + badge(o.status) + payBadge(o.payment) +
+    '<span class="note">' + esc(o.time) + '</span></div>' +
+    '<div>' + esc(o.customer) + ', ' + esc(o.area) + '</div><div class="note">' + esc(o.items) + '</div><div><b>' + peso(o.total) + '</b></div>' +
+    receipt + (note ? '<p class="note">' + esc(note) + '</p>' : '') + proof +
+    (actions.length ? '<div class="actions">' + actions.join('') + '</div>' : '') + '</div>';
+}
+
+async function gPay(id, decision) {
+  if (decision === 'Rejected' && !confirm('Reject the receipt for order #' + id + '? The order will be cancelled.')) return;
+  try {
+    const r = await api('verifyPayment', id, decision);
+    toast(r.ok ? (decision === 'Verified' ? 'Payment confirmed. The rider can pick up now.' : 'Receipt rejected. The order was cancelled.') : r.msg, !r.ok);
+  } catch (e) { toast('Could not save that. Try again.', true); }
+  run(current, false);
+}
+
+/* ---- products ------------------------------------------------------- */
+LOADERS['grocery-products'] = async function (silent) {
+  if (silent) return;                    // do not wipe stock edits in progress
+  await gLoadProducts();
+};
+
+async function gLoadProducts() {
+  const d = await api('getMyProducts');
+  $('gProdTable').innerHTML = tbl([
+    ['Product', p => '<b>' + esc(p.name) + '</b>'],
+    ['Price', p => peso(p.price)],
+    ['Stock', p => '<input type="number" min="0" step="1" id="st-' + esc(p.id) + '" value="' + p.stock + '" style="width:90px" aria-label="Stock for ' + esc(p.name) + '">' +
+      (p.stock < 1 ? ' <span class="badge s-cancelled">Out of stock</span>' : p.stock <= 5 ? ' <span class="badge s-placed">Low</span>' : '')],
+    ['', p => '<button class="btn sm" onclick="gSaveStock(\'' + esc(p.id) + '\')">Save stock</button>']
+  ], d.products, 'No products yet. Add your first product above.');
+  return d;
+}
+
+async function gAdd() {
+  $('gpAdd').disabled = true;
+  try {
+    const r = await api('addProduct', { name: $('gpName').value, price: $('gpPrice').value, stock: $('gpStock').value });
+    if (r.ok) {
+      toast('Product added.');
+      $('gpName').value = ''; $('gpPrice').value = ''; $('gpStock').value = '';
+      gLoadProducts();
+    } else toast(r.msg, true);
+  } catch (e) { toast('Could not add the product. Try again.', true); }
+  $('gpAdd').disabled = false;
+}
+
+async function gSaveStock(id) {
+  try {
+    const r = await api('updateStock', id, $('st-' + id).value);
+    toast(r.ok ? 'Stock saved.' : (r.msg || 'Could not save stock.'), !r.ok);
+  } catch (e) { toast('Could not save stock. Try again.', true); }
+}
+
+/* ---- delivery ------------------------------------------------------- */
+LOADERS['grocery-delivery'] = async function () {
+  const rows = await gFetchOrders();
+  const n = f => rows.filter(f).length;
+  $('gDelStats').innerHTML = statCards([
+    ['Waiting for a rider', n(o => o.status === 'Placed')],
+    ['In transit', n(o => G_TRANSIT.indexOf(o.status) > -1)],
+    ['Delivered', n(o => o.status === 'Delivered')]
+  ]);
+  const active = rows.filter(o => o.status === 'Placed' || G_TRANSIT.indexOf(o.status) > -1);
+  $('gDelList').innerHTML = active.length ? active.map(o => {
+    const who = o.rider
+      ? '<p style="margin:6px 0"><b>Rider:</b> ' + esc(o.rider) + ', <a href="tel:' + esc(o.riderPhone) + '">' + esc(o.riderPhone) + '</a></p>'
+      : '<p class="note">No rider yet. A TODA rider on the route will accept it soon.</p>';
+    const wait = o.status === 'Accepted' && o.payment !== 'Verified'
+      ? '<p class="note">The rider is waiting for you to confirm the GCash payment. <button class="link" onclick="show(\'grocery-payments\')">Go to Payments</button></p>' : '';
+    return '<div class="card ocard"><div class="meta"><b>Order #' + esc(o.id) + '</b>' + badge(o.status) + '<span class="note">' + esc(o.time) + '</span></div>' +
+      '<div><b>Deliver to:</b> ' + esc(o.customer) + ', ' + esc(o.area) + ' (' + esc(o.address) + ')</div>' +
+      '<div class="note">' + esc(o.items) + '</div>' + who + wait + gTrack(o.status) + '</div>';
+  }).join('') : empty('Nothing is out for delivery right now.');
+};
+
+/* ---- payments ------------------------------------------------------- */
+LOADERS['grocery-payments'] = async function () {
+  const rows = await gFetchOrders();
+  const d = await api('getMyProducts');
+  $('gPayInfo').innerHTML = '<div class="card gcash"><span class="note">Store</span><span class="big">' + esc(d.store.name) + '</span>' +
+    '<span class="note">GCash number</span><span class="big">' + esc(d.store.gcashNo) + '</span><span class="note">' + esc(d.store.gcashName) + '</span></div>';
+  const queue = rows.filter(o => o.payment === 'To verify' && o.status !== 'Cancelled');
+  const verified = rows.filter(o => o.payment === 'Verified');
+  $('gPayStats').innerHTML = statCards([
+    ['Receipts to check', queue.length],
+    ['Verified sales', peso(verified.reduce((n, o) => n + o.total, 0))]
+  ]);
+  $('gPayQueue').innerHTML = queue.length ? queue.map(gCard).join('') : empty('All receipts are checked. Nice work!');
+  const hist = rows.filter(o => o.payment === 'Verified' || o.payment === 'Rejected');
+  $('gPayHist').innerHTML = tbl([
+    ['Order', o => '#' + esc(o.id)],
+    ['Customer', o => esc(o.customer)],
+    ['Amount', o => peso(o.total)],
+    ['GCash ref.', o => esc(o.payRef || 'None')],
+    ['Receipt', o => o.receiptId ? '<a href="' + viewUrl(o.receiptId) + '" target="_blank" rel="noopener">View</a>' : 'None'],
+    ['Payment', o => badge(o.payment)],
+    ['Date', o => esc(o.time)]
+  ], hist, 'No checked payments yet.');
+};
+</script>

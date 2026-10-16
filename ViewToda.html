@@ -1,0 +1,109 @@
+<!-- ================= TODA rider ================= -->
+<section class="page" id="toda-available" hidden>
+  <h1 class="title">Available deliveries</h1>
+  <p class="sub" id="tRoute"></p>
+  <label class="row" style="font-weight:500;margin:0 0 14px">
+    <input type="checkbox" id="tAllBox" style="width:auto" onchange="tToggle()"> Show orders from other areas too
+  </label>
+  <div id="tAvailList"></div>
+</section>
+
+<section class="page" id="toda-mine" hidden>
+  <h1 class="title">My deliveries</h1>
+  <p class="sub">Pick up after the store confirms the GCash payment. Take a photo when you hand over the order.</p>
+  <div id="tMineList"></div>
+</section>
+
+<script>
+let tAll = false;
+
+function tToggle() {
+  tAll = $('tAllBox').checked;
+  run('toda-available', false);
+}
+
+/* ---- available ------------------------------------------------------ */
+LOADERS['toda-available'] = async function () {
+  const d = await api('getAvailable', tAll);
+  $('tRoute').textContent = d.route ? 'Your route: ' + d.route : 'No route is saved on your account.';
+  $('tAvailList').innerHTML = d.rows.length ? d.rows.map(tAvailCard).join('')
+    : empty(tAll ? 'No deliveries are waiting right now.' : 'No deliveries are waiting on your route. Tick "Show orders from other areas" to see more.');
+};
+
+function tAvailCard(o) {
+  const warn = o.payment === 'To verify'
+    ? '<p class="note">The store is still checking the GCash payment. You can accept now, and pick-up opens once it is confirmed.</p>' : '';
+  return '<div class="card ocard"><div class="meta"><b>Order #' + esc(o.id) + '</b>' + payBadge(o.payment) +
+    (o.onRoute ? '<span class="badge s-active">On your route</span>' : '<span class="badge">Other area</span>') +
+    '<span class="note">' + esc(o.time) + '</span></div>' +
+    '<p style="margin:4px 0"><b>Pick up:</b> ' + esc(o.store) + ', ' + esc(o.storeArea) + ' (' + esc(o.storeAddress) + ')</p>' +
+    '<p style="margin:4px 0"><b>Deliver to:</b> ' + esc(o.customer) + ', ' + esc(o.area) + ' (' + esc(o.address) + ')</p>' +
+    '<div class="note">' + esc(o.items) + '</div><div><b>' + peso(o.total) + '</b>, already paid by GCash</div>' + warn +
+    '<div class="actions"><button class="btn navy sm" onclick="tAccept(\'' + esc(o.id) + '\')">Accept delivery</button></div></div>';
+}
+
+async function tAccept(id) {
+  try {
+    const r = await api('acceptDelivery', id);
+    if (r.ok) { toast('Delivery accepted. Head to the store.'); show('toda-mine'); return; }
+    toast(r.msg, true);
+  } catch (e) { toast('Could not accept the delivery. Try again.', true); }
+  run('toda-available', false);
+}
+
+/* ---- my deliveries ---------------------------------------------------- */
+LOADERS['toda-mine'] = async function (silent) {
+  // Keep the page as it is while a delivery photo is waiting to be sent.
+  if (silent && Object.keys(IMGS).some(k => k.indexOf('proof-') === 0 && IMGS[k])) return;
+  const rows = await api('getMyDeliveries');
+  rows.sort((a, b) => (a.status === 'Delivered' || a.status === 'Cancelled') - (b.status === 'Delivered' || b.status === 'Cancelled'));
+  $('tMineList').innerHTML = rows.length ? rows.map(tMineCard).join('')
+    : empty('You have no deliveries yet. Accept one from Available deliveries.');
+};
+
+function tMineCard(o) {
+  let action = '';
+  if (o.status === 'Accepted') {
+    action = o.payment === 'Verified'
+      ? '<button class="btn navy sm" onclick="tStep(\'' + esc(o.id) + '\',\'Picked Up\')">Mark as picked up</button>'
+      : '<p class="note">Waiting for the store to confirm the GCash payment before pick-up.</p>';
+  } else if (o.status === 'Picked Up') {
+    action = '<button class="btn navy sm" onclick="tStep(\'' + esc(o.id) + '\',\'On the Way\')">Start delivery</button>';
+  } else if (o.status === 'On the Way') {
+    action = imgField('proof-' + o.id, 'Photo of the delivered order', true) +
+      '<p><button class="btn navy sm" id="done-' + esc(o.id) + '" onclick="tDone(\'' + esc(o.id) + '\')">Mark as delivered</button></p>';
+  } else if (o.status === 'Delivered' && o.proofId) {
+    action = '<p class="note" style="margin-bottom:4px">Delivery photo</p>' + thumb(o.proofId, 'Photo of order ' + o.id + ' at delivery');
+  }
+  return '<div class="card ocard"><div class="meta"><b>Order #' + esc(o.id) + '</b>' + badge(o.status) + payBadge(o.payment) +
+    '<span class="note">' + esc(o.time) + '</span></div>' +
+    '<p style="margin:4px 0"><b>Pick up:</b> ' + esc(o.store) + ', ' + esc(o.storeArea) + ' (' + esc(o.storeAddress) + ')</p>' +
+    '<p style="margin:4px 0"><b>Deliver to:</b> ' + esc(o.customer) + ', ' + esc(o.phone) + '<br>' + esc(o.area) + ' (' + esc(o.address) + ')</p>' +
+    '<div class="note">' + esc(o.items) + '</div><div><b>' + peso(o.total) + '</b>, already paid by GCash</div>' +
+    '<div class="actions" style="display:block">' + action + '</div></div>';
+}
+
+async function tStep(id, status) {
+  try {
+    const r = await api('updateDelivery', id, status);
+    toast(r.ok ? 'Updated to ' + status + '.' : r.msg, !r.ok);
+  } catch (e) { toast('Could not update the delivery. Try again.', true); }
+  run('toda-mine', false);
+}
+
+async function tDone(id) {
+  const key = 'proof-' + id;
+  if (!IMGS[key]) return toast('Take or pick a photo of the delivered order first.', true);
+  $('done-' + id).disabled = true;
+  try {
+    const r = await api('completeDelivery', id, IMGS[key]);
+    if (r.ok) { delete IMGS[key]; toast('Delivered. Thank you!'); }
+    else { toast(r.msg, true); $('done-' + id).disabled = false; return; }
+  } catch (e) {
+    toast('Could not send the photo. Check your connection and try again.', true);
+    $('done-' + id).disabled = false;
+    return;
+  }
+  run('toda-mine', false);
+}
+</script>

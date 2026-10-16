@@ -1,0 +1,199 @@
+<!-- ================= Suki (customer) ================= -->
+<section class="page" id="suki-shop" hidden>
+
+  <div id="sStores">
+    <h1 class="title">Shop from your area</h1>
+    <p class="sub">Pick a store, add items to your cart, and pay with GCash. A TODA rider delivers it to you.</p>
+    <div id="sStoreGrid" class="grid"></div>
+  </div>
+
+  <div id="sShop" hidden>
+    <button class="btn ghost sm" onclick="sBack()">All stores</button>
+    <h1 class="title" id="sShopName" style="margin-top:10px"></h1>
+    <p class="sub" id="sShopSub"></p>
+    <div class="shopgrid">
+      <div class="panel"><h2>Products</h2><div id="sProducts" class="stack"></div></div>
+      <div class="panel">
+        <h2>Your cart</h2>
+        <div id="sCart"></div>
+        <div class="total"><span>Total</span><span id="sTotal">&#8369;0</span></div>
+        <button class="btn navy block" id="sCheckoutBtn" onclick="sCheckout()">Checkout</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="sPay" hidden></div>
+</section>
+
+<section class="page" id="suki-orders" hidden>
+  <h1 class="title">My orders</h1>
+  <p class="sub">Track each order from the store to your door. This page refreshes by itself.</p>
+  <div id="sOrders"></div>
+</section>
+
+<script>
+let sStores = [], sStore = null, sProds = [], sCart = {}, sCartStore = null;
+const S_STEPS = ['Placed', 'Accepted', 'Picked Up', 'On the Way', 'Delivered'];
+
+function tracker(status) {
+  if (status === 'Cancelled') return '';
+  const i = S_STEPS.indexOf(status);
+  return '<div class="track">' + S_STEPS.map((x, k) => '<span class="' + (k <= i ? 'on' : '') + '">' + x + '</span>').join('') + '</div>';
+}
+
+/* ---- shop ---------------------------------------------------------- */
+LOADERS['suki-shop'] = async function (silent) {
+  if (silent || sStore) return;          // do not redraw while someone is shopping
+  sStores = await api('getStores');
+  $('sStoreGrid').innerHTML = sStores.length ? sStores.map(s =>
+    '<button class="store" onclick="sOpen(\'' + esc(s.id) + '\')"><div class="thumb big">' +
+    (s.photoId ? thumb(s.photoId, 'Photo of ' + s.name, true) : IMG_PH) + '</div><b>' + esc(s.name) + '</b>' +
+    '<span class="note">' + esc(s.area) + ', ' + s.products + ' products</span></button>').join('')
+    : empty('No stores are open yet. Check back soon.');
+};
+
+function sCount() { return Object.keys(sCart).reduce((n, k) => n + sCart[k], 0); }
+function sTotalAmt() { return sProds.reduce((n, p) => n + (sCart[p.id] || 0) * p.price, 0); }
+
+async function sOpen(id) {
+  const s = sStores.find(x => x.id === id);
+  if (!s) return;
+  if (sCartStore && sCartStore !== id && sCount() > 0) toast('Your cart was cleared because you changed stores.');
+  if (sCartStore !== id) { sCart = {}; sCartStore = null; }
+  try {
+    sProds = await api('getProducts', id);
+  } catch (e) { return toast('Could not load the products. Try again.', true); }
+  sStore = s;
+  $('sStores').hidden = true; $('sPay').hidden = true; $('sShop').hidden = false;
+  $('sShopName').textContent = s.name;
+  $('sShopSub').textContent = s.area + ', ' + s.address;
+  sRender();
+}
+
+function sBack() {
+  sStore = null;
+  $('sShop').hidden = true; $('sPay').hidden = true; $('sStores').hidden = false;
+  run('suki-shop', false);
+}
+
+function sStep(pid, d) {
+  const p = sProds.find(x => x.id === pid);
+  const next = Math.max(0, Math.min(p.stock, (sCart[pid] || 0) + d));
+  if (next) sCart[pid] = next; else delete sCart[pid];
+  sCartStore = sStore.id;
+  sRender();
+}
+
+function sRender() {
+  $('sProducts').innerHTML = sProds.length ? sProds.map(p => {
+    const q = sCart[p.id] || 0;
+    const ctrl = p.stock < 1 ? '<span class="badge s-cancelled">Out of stock</span>' :
+      '<div class="stepper"><button aria-label="Remove one ' + esc(p.name) + '" onclick="sStep(\'' + esc(p.id) + '\',-1)"' + (q ? '' : ' disabled') + '>&minus;</button>' +
+      '<span aria-live="polite">' + q + '</span>' +
+      '<button aria-label="Add one ' + esc(p.name) + '" onclick="sStep(\'' + esc(p.id) + '\',1)"' + (q >= p.stock ? ' disabled' : '') + '>+</button></div>';
+    return '<div class="card prow"><div class="grow"><b>' + esc(p.name) + '</b><br><span class="note">' + peso(p.price) + ', ' + p.stock + ' left</span></div>' + ctrl + '</div>';
+  }).join('') : empty('This store has no products yet.');
+
+  const lines = sProds.filter(p => sCart[p.id]);
+  $('sCart').innerHTML = lines.length ? lines.map(p =>
+    '<div class="line"><span>' + esc(p.name) + ' x' + sCart[p.id] + '</span><b>' + peso(p.price * sCart[p.id]) + '</b></div>').join('')
+    : '<p class="note">Your cart is empty. Add products from the list.</p>';
+  $('sTotal').textContent = peso(sTotalAmt());
+  $('sCheckoutBtn').disabled = !lines.length;
+}
+
+/* ---- checkout (GCash + receipt) ------------------------------------ */
+async function sCheckout() {
+  if (!sCount()) return;
+  let info;
+  try { info = await api('getCheckoutInfo', sStore.id); } catch (e) { return toast('Could not start checkout. Try again.', true); }
+  if (!info) return toast('This store is not taking orders right now.', true);
+  const total = sTotalAmt();
+  const lines = sProds.filter(p => sCart[p.id]);
+  $('sShop').hidden = true; $('sPay').hidden = false;
+  $('sPay').innerHTML =
+    '<button class="btn ghost sm" onclick="sBackToCart()">Back to cart</button>' +
+    '<h1 class="title" style="margin-top:10px">Checkout</h1><p class="sub">Send the payment first, then upload your receipt to place the order.</p>' +
+    '<div class="shopgrid"><div class="panel"><h2>Delivery</h2>' +
+    '<label for="cArea">Area</label><select id="cArea">' + CONFIG.areas.map(a => '<option' + (a === info.area ? ' selected' : '') + '>' + esc(a) + '</option>').join('') + '</select>' +
+    '<label for="cAddr">Address or landmark</label><input id="cAddr" value="' + esc(info.address) + '">' +
+    '<h3>Order from ' + esc(info.store) + '</h3>' +
+    lines.map(p => '<div class="line"><span>' + esc(p.name) + ' x' + sCart[p.id] + '</span><b>' + peso(p.price * sCart[p.id]) + '</b></div>').join('') +
+    '<div class="total"><span>Total</span><span>' + peso(total) + '</span></div></div>' +
+    '<div class="panel"><h2>Pay with GCash</h2>' +
+    '<div class="card gcash"><span class="note">Send exactly</span><span class="big">' + peso(total) + '</span>' +
+    '<span class="note">to GCash number</span><span class="big">' + esc(info.gcashNo) + '</span>' +
+    '<span class="note">' + esc(info.gcashName) + ', ' + esc(info.store) + '</span></div>' +
+    '<label for="cRef">GCash reference number (optional)</label><input id="cRef" inputmode="numeric">' +
+    imgField('rcpt', 'Upload your GCash receipt') +
+    '<p><button class="btn navy block" id="cPlace" onclick="sPlace()">Place order</button></p>' +
+    '<p class="note">The store checks your receipt. If it does not match, the order is cancelled.</p></div></div>';
+}
+
+function sBackToCart() {
+  $('sPay').hidden = true; $('sShop').hidden = false;
+}
+
+async function sPlace() {
+  const address = $('cAddr').value.trim();
+  if (!address) return toast('Enter your delivery address.', true);
+  if (!IMGS.rcpt) return toast('Upload your GCash receipt first.', true);
+  $('cPlace').disabled = true;
+  try {
+    const r = await api('placeOrder', {
+      groceryId: sStore.id, area: $('cArea').value, address: address, payRef: $('cRef').value,
+      receipt: IMGS.rcpt, cart: Object.keys(sCart).map(id => ({ id: id, qty: sCart[id] }))
+    });
+    if (!r.ok) {
+      toast(r.msg, true);
+      $('cPlace').disabled = false;
+      if (/stock|available/i.test(r.msg)) { sProds = await api('getProducts', sStore.id); sRender(); sBackToCart(); }
+      return;
+    }
+    toast('Order #' + r.id + ' placed. A TODA rider on your route will accept it soon.');
+    sCart = {}; sCartStore = null; sStore = null; IMGS.rcpt = '';
+    $('sPay').hidden = true; $('sShop').hidden = true; $('sStores').hidden = false;
+    show('suki-orders');
+  } catch (e) {
+    toast('Could not place the order. Check your connection and try again.', true);
+    $('cPlace').disabled = false;
+  }
+}
+
+/* ---- my orders ----------------------------------------------------- */
+LOADERS['suki-orders'] = async function () {
+  const rows = await api('getMyOrders');
+  $('sOrders').innerHTML = rows.length ? rows.map(sOrderCard).join('')
+    : empty('You have no orders yet. Shop from a store to place your first order.');
+};
+
+function sOrderCard(o) {
+  let payNote = '';
+  if (o.status !== 'Cancelled') {
+    payNote = o.payment === 'To verify' ? '<p class="note">The store is checking your GCash receipt.</p>' : '';
+  } else if (o.payment === 'Rejected') {
+    payNote = '<p class="note">The store could not match your GCash receipt, so the order was cancelled. Message the store about a refund.</p>';
+  } else {
+    payNote = '<p class="note">This order was cancelled. If you already paid, message the store about a refund.</p>';
+  }
+  const rider = o.rider ? '<p class="note">Rider: <b>' + esc(o.rider) + '</b>, ' + esc(o.riderPhone) + '</p>'
+    : (o.status === 'Placed' ? '<p class="note">Waiting for a TODA rider on your route to accept.</p>' : '');
+  const proof = o.proofId ? '<p class="note" style="margin-bottom:4px">Delivery photo</p>' + thumb(o.proofId, 'Photo of order ' + o.id + ' at delivery') : '';
+  const actions = [];
+  if (o.status === 'Placed') actions.push('<button class="btn red sm" onclick="sCancel(\'' + esc(o.id) + '\')">Cancel order</button>');
+  actions.push('<button class="btn sm" onclick="reportFor(\'' + esc(o.id) + '\')">Report a problem</button>');
+  return '<div class="card ocard"><div class="meta"><b>Order #' + esc(o.id) + '</b>' + badge(o.status) + payBadge(o.payment) +
+    '<span class="note">' + esc(o.time) + '</span></div>' +
+    '<div>' + esc(o.store) + '</div><div class="note">' + esc(o.items) + '</div><div><b>' + peso(o.total) + '</b></div>' +
+    payNote + rider + tracker(o.status) + proof + '<div class="actions">' + actions.join('') + '</div></div>';
+}
+
+async function sCancel(id) {
+  if (!confirm('Cancel order #' + id + '?')) return;
+  try {
+    const r = await api('cancelOrder', id);
+    toast(r.ok ? 'Order cancelled. If you already paid, message the store about a refund.' : r.msg, !r.ok);
+  } catch (e) { toast('Could not cancel the order. Try again.', true); }
+  run('suki-orders', false);
+}
+</script>
